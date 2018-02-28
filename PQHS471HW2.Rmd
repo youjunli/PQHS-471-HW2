@@ -1,0 +1,214 @@
+---
+title: "PQHS 471 HW1"
+author: "Youjun Li"
+date: "Feb 27, 2018"
+output:
+  html_document: 
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    number_sections: FALSE
+  pdf_document:
+    number_sections: yes
+geometry: margin=1.75in
+fontsize: 11pt
+documentclass: article
+---
+```{r,echo=F,warning=F}
+library(knitr)
+options(width=50)
+opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=T,message=F, warning=F)
+
+```
+
+# ISLR Chapter 5 
+## 9
+### a 
+```{r}
+library(MASS)
+data(list="Boston")
+df1=Boston
+(mu.hat=mean(df1$medv))
+```
+
+### b
+```{r}
+(se.mu.hat=sd(df1$medv)/sqrt(nrow(df1)))
+```
+The estimated standard error of sample mean (0.41) tells you how accurate your estimate for the population mean is. 
+
+### c
+For the purpose of practice, I write my own function for boostrap.
+```{r}
+btstp=function(x, B, seed, FUN){
+  
+  btsm=data.frame(matrix(NA, nrow=length(x), ncol=B)) #will contain all bt samples
+  set.seed(seed)
+  for (i in 1:B)
+  {
+   btsm[,i]=sample(x,replace=T) 
+  }
+  thetab=apply(btsm, 2, FUN) #bt estimates from each iteration as a vector
+  se.b=sqrt(sum((thetab-(sum(thetab)/B))^2)/(B-1)) #bt standard error
+  return(se.b)
+}
+(se.bt.mu=btstp(df1$medv, 1000, 621, mean))
+```
+The 1000 bootstrap standard error is slightly bigger than the result from part b.
+
+### d
+```{r}
+t.test(df1$medv)
+c(mu.hat-2*se.bt.mu, mu.hat+2*se.bt.mu)
+```
+Since the bootstrap standard error is slightly bigger, the corresponding confidence interval is thus a bit wider than it is of t test.
+
+### e
+```{r}
+(med.hat=median(df1$medv))
+```
+
+### f
+```{r}
+(se.bt.med=btstp(df1$medv, 1000, 621, median))
+```
+The bootstrap standard error is 0.37, fairly close to sample mean standard error and sample mean bootstrap standard error. 
+
+### g
+```{r}
+(mu.01=quantile(df1$medv,0.1))
+```
+
+### h
+```{r}
+(se.bt.mu01=btstp(df1$medv, 1000, 621, FUN=function(x) quantile(x,0.1)))
+```
+The bootstrap standard error of the tenth percentile is 0.49, larger than it is of mean and median, because the tenth quantile is close to the tail of the distribution.
+
+
+# ISLR Chapter 6 
+## 9
+### a
+```{r}
+library(caret)
+df2=read.csv('College.csv', header = T, row.names = 1)
+set.seed(621)
+dfsplt=createDataPartition(df2$Apps,p=0.7,list = F)
+trn=df2[dfsplt,]
+tst=df2[-dfsplt,]
+```
+
+### b
+```{r}
+fit.lm=lm(Apps~., data=trn)
+yhat.lm=predict(fit.lm, tst)
+(mse.lm=mean((tst$Apps-yhat.lm)^2))
+```
+
+### c
+```{r}
+xtrn=model.matrix(Apps~., trn)[,-1]
+xtst=model.matrix(Apps~., tst)[,-1]
+y=trn$Apps
+xtrn=scale(xtrn)
+xtst=scale(xtst)
+library(glmnet)
+fit.rdg=cv.glmnet(xtrn, y, alpha=0)
+lmd.rdg=fit.rdg$lambda.min
+yhat.rdg=predict(fit.rdg, s=lmd.rdg, newx=xtst)
+(mse.rdg=mean((tst$Apps-yhat.rdg)^2))
+```
+
+### d
+```{r}
+fit.lss=cv.glmnet(xtrn, y, alpha=1)
+lmd.lss=fit.lss$lambda.1se
+yhat.lss=predict(fit.lss, s=lmd.lss, newx=xtst)
+(mse.lss=mean((tst$Apps-yhat.lss)^2))
+coef(fit.lss, s=fit.lss$lambda.1se)
+coef(fit.lss, s=fit.lss$lambda.min)
+```
+I selected lambda.1se because using lambda.min only reduces the dimension by 3, even though it increases the MSE, the MSE is still not significantly larger than it is of ridge regression, and almost the same as it is of lm.
+
+### e
+```{r}
+library(pls)
+fit.pcr=pcr(Apps~., data=trn, scale=T, validation="CV")
+summary(fit.pcr)
+validationplot(fit.pcr, val.type = "RMSE")
+yhat.pcr=predict(fit.pcr, tst, ncomp=9) 
+(mse.pcr=mean((tst$Apps-yhat.pcr)^2))
+```
+The minimal RMSE is obtained at M=17, but at 9 it's the elbow point, small enough, so I chose 9.
+
+### f
+```{r}
+fit.pls=plsr(Apps~., data=trn, scale=T, validation="CV")
+summary(fit.pls)
+validationplot(fit.pls, val.type = "RMSE")
+yhat.pls=predict(fit.pls, tst, ncomp=9)
+(mse.pls=mean((tst$Apps-yhat.pls)^2))
+
+```
+The minimal RMSE is obtained at M=13, but at 9 it's only larger by 4, so I chose 9.
+
+### g
+In terms of MSE, ridge gives the smallest one. However, LASSO with 1se lambda gives a model with only 3 variables and can still maintain a reasonable MSE. I will consider choosing LASSO more as its MSE is accecptable and significantly redueces the dimension. 
+
+
+## 11
+### a
+```{r}
+set.seed(621)
+dfsplt=createDataPartition(df1$crim,p=0.7,list = F)
+trn=df1[dfsplt,]
+tst=df1[-dfsplt,]
+xtrn=model.matrix(crim~., trn)[,-1]
+xtst=model.matrix(crim~., tst)[,-1]
+y=trn$crim
+xtrn=scale(xtrn)
+xtst=scale(xtst)
+
+#forward subset selection
+library(leaps)
+fit.fwd = regsubsets(crim ~ ., data=trn, nvmax=13, method="forward")
+(sum.fwd=summary(fit.fwd))
+which.min(sum.fwd$cp) # 6 according to Cp
+which.min(sum.fwd$bic) # 2 according to BIC
+which.max(sum.fwd$adjr2) # 7 according to adj R2
+xtest = model.matrix(crim ~ ., tst) 
+mse.sub=c()
+for (i in c(2,6,7)) {
+    coefi = coef(fit.fwd, id = i)
+    pred = xtest[, names(coefi)] %*% coefi
+    mse.sub[i] = mean((tst$crim - pred)^2)
+}
+plot(mse.sub) #plot suggests 6
+mse.sub[6]
+#model 6 is zn+nox+dis+rad+ptratio+medv
+
+#ridge
+fit.rdg=cv.glmnet(xtrn, y, alpha=0)
+lmd.rdg=fit.rdg$lambda.min
+yhat.rdg=predict(fit.rdg, s=lmd.rdg, newx=xtst)
+(mse.rdg=mean((tst$crim-yhat.rdg)^2))
+coef(fit.rdg, s=fit.rdg$lambda.min)
+
+#lasso
+fit.lss=cv.glmnet(xtrn, y, alpha=1)
+lmd.lss=fit.lss$lambda.min
+yhat.lss=predict(fit.lss, s=lmd.lss, newx=xtst)
+(mse.lss=mean((tst$crim-yhat.lss)^2))
+#coef(fit.lss, s=fit.lss$lambda.1se)
+coef(fit.lss, s=fit.lss$lambda.min)
+#pcr
+fit.pcr=pcr(crim~., data=trn, scale=T, validation="CV")
+summary(fit.pcr)
+validationplot(fit.pcr, val.type = "RMSE")
+yhat.pcr=predict(fit.pcr, tst, ncomp=3) #although comps 13 is 0.128 less than comps 3, its small
+(mse.pcr=mean((tst$crim-yhat.pcr)^2))
+```
+
+### b and c
+
+Ridge regression gives the smallest test MSE (24.27) but included all 13 variables. The forward subset selection performs the third best in terms of test MSE (26.23), and it gives a smaller model with 6 variables: zn+nox+dis+rad+ptratio+medv. Even though LASSO with 1se lambda would give the most parsmonious model with only one variable, its MSE is big: 38.74. So this time I went with the minimum lambda that gives the second smallest test MSE (24.76) and a model with 12 variables: zn+indus+chas+nox+rm+age+dis+rad+ptratio+black+lstat+medv. In this case, I think I will choose the forward subset selection as it gives a much smaller model with accecptable test MSE.
